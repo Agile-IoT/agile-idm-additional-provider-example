@@ -98,11 +98,60 @@ This call on the express router ensures that when there is a get request to the 
 
 ### Authentication Strategy
 
+The authentication strategy code depends on the kind of strategy being integrated; that is to say, the code using an Oauth2 provider will differr from code using a local stragy or using other kinds of authentication; however, this example covers a simple scenario of local authentication in which the server gets a username and password from the user. For other options, the source code of the github, google, pam, agile-local or webid implementations is availble.
+
+Here is the key part of the authentication strategy:
+``` 
+passport.use(auth_type, new LocalStrategy(
+        function (username, password, done) {
+          var default_exp = null;
+          console.log("body"+username+"p"+password);
+
+          db.users.findByUsernameAndAuthType(username, auth_type, function (err, user) {
+            if (err) {
+              return done(err);
+            }
+            if (!user) {
+              return done(null, false);
+            }
+            //at this point we know there is a user with this authentication type and username in the database
+            //if it doesn't fit our requirements (i.e. simple check for company_name and password...) we reject the request.
+            //although the password could also be stored in the database of entities and checked against user.password, we make the check more explicit here.
+            if ( username !== "alice" &&  password !== "secret") {
+              return done(null, false);
+            }
+            //generate the token randomly
+            var token = tokens.uid(30);
+            db.accessTokens.save(token, user.id, null, "bearer", [conf.gateway_id], default_exp, null, function (err) {
+              if (err) {
+                return done(err);
+              }
+              //return the user back to the serializer to keep going
+              return done(null, user);
+            });
+          });
+        }
+      ));
+      console.log('finished registering passport ' + auth_type + ' strategy');
+      return true;
+
+    } catch (e) {
+      console.log('FAIL TO register a strategy');
+      console.log('ERROR: error loading ' + auth_type + ' passport strategy: ' + e);
+      return false;
+    }
+  }
+```
+
+This function specifies passport to user a local strategy, whenver the passport strategy called "my-demo" is used, as it has been referenced in the routes file.
+
+In this function a callback is used to pass the username and password expected from the form.
+
+Then this authentication strategy looksup the user in the local database using the `db.users.findByUsernameAndAuthType` function from the agile-idm-web-ui users database.
+
+In case no errors happen and the user is found, this strategy checks that the user has the proper username and password. Users with different username and passwords are rejected calling the callback without error and passing the second argument as false `done(null, false)`. In case the username and password match,the strategy must generate and store a token in the tokens database. This is done by the `db.accessTokens.save`. This function is called passing the following arguments: a randomly generated token, the user id, a null client (this will be automatically updated to store the client id of the client requesting the token, once oauth2 flow is completed automatically), the token type is "bearer", with scope [gateway_id], a null default expiration value which equals to a non-expiring token, and a null refresh token since there are no refresh tokens for this local authentication. In cases when there are refresh tokens from Oauth2 providers, they should be provided in this argument.
 
 
-
- 
- 
 
 
 
